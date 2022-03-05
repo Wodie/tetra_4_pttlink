@@ -2,7 +2,7 @@
 
 
 # General settings
-Callsign = 'XE1F'
+Callsign = 'N0CALL'
 Radio_ISSI = 9999
 
 
@@ -29,7 +29,7 @@ AUX_GPIO = 18
 # APRS callsign suffix for APRS (example N0CALL/R2, only set R2).
 Suffix = 'T1'
 # APRS passcode for your call (example N0CALL).
-Passcode = 6881
+Passcode = 123456
 # Optional, comment Server if you don't use APRS-IS.
 # good server selections:
 #	euro.aprs2.net:14580 (Europe)
