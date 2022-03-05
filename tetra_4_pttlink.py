@@ -7,7 +7,7 @@ import defs
 import settings
 import RPi.GPIO as GPIO
 import math
-#import aprs
+import aprs
 
 
 
@@ -17,7 +17,7 @@ MinorVersionInfo = '00'
 RevisionInfo = '0'
 Version = VersionInfo + '.' + MinorVersionInfo + '.' + RevisionInfo
 print('\n##################################################################')
-print('	*** ' + AppName + ' v' + Version + ' ***')
+print(f'	*** {AppName} v{Version} ***')
 print('	Released: March 05, 2022. Created March 01, 2022.')
 print('	Created by:')
 print('	Juan Carlos Perez De Castro (Wodie) KM4NNO / XE1F')
@@ -106,7 +106,8 @@ class C_Tetra(object):
 	peirequest = defs.INIT_0
 	last_sdsinstance = ''
 	tetra_modem_sql = False
-	pei_Buffer = '' # Clear Rx buffer.
+	pei_Buffer = [ord('A')]
+ # Clear Rx buffer.
 	# Timer
 	pei_TimerEnabled = True
 	pei_NextTimer = 0;
@@ -153,6 +154,7 @@ class C_Qso(object):
 	tsi = ''
 	start = ''
 	stop = ''
+	members = ''
 Qso = C_Qso()
 
 class C_Sds(object):
@@ -265,7 +267,7 @@ def main():
 
 	# APRS
 	tetra.aprspath = "APRS,qAR,"
-	tetra.aprspath += settings.callsign
+	tetra.aprspath += settings.Callsign
 	tetra.aprspath += "-10:"
 
 	# Default values.
@@ -332,26 +334,29 @@ def Read_Serial():
 #		Serial_Rx(SerialBuffer, 0); # Process a full data stream.
 		#print('Len(SerialBuffer) = ' + str(len(SerialBuffer))
 
-		Buffer = tetra.pei.read(tetra.pei.in_waiting) # Read Rx chars.
-#		print('Buffer = ' + Buffer
-#		print('	Len(Buffer) = ' + str(len(Buffer))
-		Buf_Len = len(Buffer)
+		RxBytes = tetra.pei.read(tetra.pei.in_waiting) # Read Rx chars.
+		#print('RxBytes = ' + str(RxBytes))
+		#print('  Len(RxBytes) = ' + str(len(RxBytes)))
+		Buf_Len = len(RxBytes)
 		if (Buf_Len >= 1):
-			#Bytes_2_HexString(Buffer);
 			for x in range(0, Buf_Len):
-				#print('	x=' + str(x) + ' byte ' + str(ord(Buffer[x : x + 1]))
-				if (ord(Buffer[x : x + 1]) == 0x0D): # if CR
-					#print('len(Buffer) = ' + str(len(Buffer))
-					tetra.peiBufer = tetra.pei_Buffer.replace(chr(0x0D), '')
-					tetra.peiBufer = tetra.pei_Buffer.replace(chr(0x0A), '')
+				#print('x = ' + str(x) + ' byte ' + str(ord(RxBytes[x : x + 1])))
+				if (ord(RxBytes[x : x + 1]) == 0x0D): # if CR
+					#print('CR len(tetra.pei_Buffer) = ' + str(len(tetra.pei_Buffer)))
 					if (len(tetra.pei_Buffer) > 0):
-						handlePeiAnswer(tetra.pei_Buffer) # Process a full line of data.
-						#print('	len(tetra.pei_Buffer) = ' + str(len(tetra.pei_Buffer))
-					tetra.pei_Buffer = '' # Clear Rx buffer.
-				elif (ord(Buffer[x : x + 1]) == 0x0A): # if LF
+						message = ''
+						for i in tetra.pei_Buffer:
+							#print('i = ' + str(i))
+							message += chr(i)
+						#print('message = ' + message)
+						#print('  pei_Buffer = ' + str(tetra.pei_Buffer))
+						#print('  len(tetra.pei_Buffer) = ' + str(len(tetra.pei_Buffer)))
+						handlePeiAnswer(message) # Process a full line of data.
+					tetra.pei_Buffer.clear()
+				elif (ord(RxBytes[x : x + 1]) == 0x0A): # if LF
 					pass
 				else :
-					tetra.pei_Buffer = tetra.pei_Buffer + Buffer[x : x + 1]
+					tetra.pei_Buffer.append(ord(RxBytes[x : x + 1]))
 	return
 
 
@@ -1294,9 +1299,19 @@ def sendPei(cmd):
 	# a sdsmsg must end with 0x1a
 	#if (ord(cmd[-1:]) != 0x0A):
 		#cmd += chr(0x0A)
-	tetra.pei.write(cmd + chr(0x0D) + chr(0x0A))
-	if (settings.debug >= defs.LOGDEBUG):
-		print('  To PEI:' + cmd)
+
+	cmd = cmd + chr(0x0D) + chr(0x0A)#'\r\n'
+	#print('len(cmd) = ' + str(len(cmd)))
+
+	arr = [ord(cmd[0 : 1])]
+	arr.clear()
+	for x in cmd:
+		#print (str(x))
+		arr.append(ord(x))
+	tetra.pei.write(arr)
+#	if (settings.debug >= defs.LOGDEBUG):
+#		print('  To PEI:' + str(cmd))
+#		print('     RAW:' + str(arr))
 	return
 
 ###############################################################################
@@ -1562,9 +1577,10 @@ def HotKeys():
 		if ord(c) == 27: # Esc
 			print('Esc key pressed.')
 			Run = False
+
 		elif c == 'a': # AT Command
 			print('a key pressed.')
-			sendPei('AT')
+			aprs_is_Tx('XE1F-7', 'XE1F-7>APRS:>Hello TETRA World!')
 		elif c == 'H': # Help
 			helpMenu()
 		elif c == 'h': # Help
@@ -1578,6 +1594,9 @@ def HotKeys():
 		elif c == 'p': # AT Command
 			print('p key pressed.')
 			transmitterStateChange(False)
+		elif c == 't': # AT Command
+			print('t key pressed.')
+			sendPei('AT')
 		else :
 			#print('HotKey ' + c)
 			pass
@@ -1659,20 +1678,29 @@ def GPIO_Callback(channel): # Change to High
 ###############################################################################
 # APRS
 ###############################################################################
-def APRS_Init():
-	APRS.path = "APRS,qAR,"
-	APRS.path += callsign()
-	APRS.path += "-10:"
-	if (len(APRS.symbol) != 2):
-		APRS.symbol = DEFAULT_APRS_ICON
+def aprs_Init():
+	aprs.path = "APRS,qAR,"
+	aprs.path += callsign()
+	aprs.path += "-10:"
+	if (len(aprs.symbol) != 2):
+		aprs.symbol = DEFAULT_APRS_ICON
 
 
 
+#def p(x): print(x)
+#	a = aprs.TCP('W2GMD', '12345')
+#	a.start()
+
+#	a.receive(callback=p)
 
 
 
+def aprs_is_Tx(des_callsign, frame):
+	#frame = aprs.parse_frame('XE1F-7>APRS:>Hello TETRA World!')
+	aprs_is = aprs.TCP(b'{settings.Callsign}', b'{settings.Passcode}')
+	aprs_is.start()
 
-
+	aprs_is.send(frame)
 
 
 

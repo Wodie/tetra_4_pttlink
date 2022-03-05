@@ -2,8 +2,8 @@
 
 
 # General settings
-callsign = 'XE1F'
-radio_issi = 9999
+Callsign = 'XE1F'
+Radio_ISSI = 9999
 
 
 
