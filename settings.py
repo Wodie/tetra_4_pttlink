@@ -3,6 +3,8 @@
 
 # General settings
 Callsign = 'N0CALL'
+mcc = 901
+mnc = 16383
 Radio_ISSI = 9999
 
 
