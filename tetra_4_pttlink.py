@@ -8,6 +8,7 @@ import settings
 import RPi.GPIO as GPIO
 import math
 import aprs
+import json
 
 
 
@@ -73,14 +74,14 @@ class C_Tetra(object):
 	mute_rx_on_tx = True
 #	mute_tx_on_rx = True
 #	rgr_sound_always = False
-	mcc = ''
-	mnc = ''
-	issi = ''
+	mcc = settings.mcc
+	mnc = settings.mnc
+	issi = str()
 	gssi = 1
-	initstr = ''
-	pei = ''
+	initstr = str()
+	pei = str()
 	sds_pty = 0
-	peistream = ''
+	peistream = str()
 	talkgroup_up = False
 	sds_when_dmo_on = False
 	sds_when_dmo_off = False
@@ -101,10 +102,10 @@ class C_Tetra(object):
 	current_cci = 0
 	dmnc = 0
 	dmcc = 0
-	infosds = ''
+	infosds = str()
 
 	peirequest = defs.INIT_0
-	last_sdsinstance = ''
+	last_sdsinstance = str()
 	tetra_modem_sql = False
 	pei_Buffer = [ord('A')]
  # Clear Rx buffer.
@@ -116,46 +117,64 @@ class C_Tetra(object):
 
 tetra = C_Tetra()
 
+
+#tetra_arr = C_Tetra()
+#tetra_arr[0].mcc = 2
+#tetra_arr.append()
+#tetra_arr[1].mcc = 2
+
+
+
+#users = [{'ID':settings.RadioISSI, 'mcc':901}]
+
+
+
 class C_Call(object):
-	mute_rx_on_tx = ''
-	mute_tx_on_rx = ''
-	rgr_sound_always = ''
-	mcc = ''
-	mnc = ''
-	issi = ''
-	gssi = ''
-	port = ''
-	baudrate = ''
-	initstr = ''
+	mute_rx_on_tx = bool()
+	mute_tx_on_rx =bool()
+	rgr_sound_always = bool()
+	mcc = str()
+	mnc = str()
+	issi = str()
+	gssi = int()
+	port = str()
+	baudrate = int()
+	initstr = str()
 	pei = ''
 	sds_pty = ''
 	dapnetclient = ''
 
-class C_Callinfo(object):
-	instance = ''
-	callstatus = ''
-	aistatus = ''
-	origin_cpit = ''
-	o_mcc = ''
-	o_mnc = ''
-	o_issi = ''
-	hook = ''
-	simplex = ''
-	e2eencryption = ''
-	commstype = ''
-	codec = ''
-	dest_cpit = ''
-	d_mcc = ''
-	d_mnc = ''
-	d_issi = ''
-	prio = ''
+class Callinfo():
+	instance = int()
+	callstatus = int()
+	aistatus = int()
+	origin_cpit = int()
+	o_mcc = int()
+	o_mnc = int()
+	o_issi = int()
+	hook = int()
+	simplex = int()
+	e2eencryption = int()
+	commstype = int()
+	codec = int()
+	dest_cpit = int()
+	d_mcc = int()
+	d_mnc = int()
+	d_issi = int()
+	prio = int()
+callinfo = [{'index':Callinfo()}]
+callinfo.append({'index':Callinfo()})
 
-class C_Qso(object):
-	tsi = ''
+class QsoInfo(object):
+	tsi = str()
 	start = ''
 	stop = ''
 	members = ''
-Qso = C_Qso()
+Qso = QsoInfo()
+
+qsoinfo = {'"qso_active"':bool(), "gateway":int(), "dest_mcc":int(), "dest_mnc":int(),
+	"dest_issi":int(), "aimode":int(), "cci":int(), "last_activity":str()}
+
 
 class C_Sds(object):
 	id = 0					# message reference id
@@ -164,32 +183,33 @@ class C_Sds(object):
 	message = ''			# Sds as text
 	tos = 0					# Unix time of sending
 	tod = 0					# Unix time of delivery
-	_type = ''				# STATE, LIP_SHORT,..
-	direction = ''			# INCOMING, OUTGOING
+	_type = int()			# STATE, LIP_SHORT,..
+	direction = int()		# INCOMING, OUTGOING
 	nroftries = 0			# number of tries
-	aiservice = ''			# AI service / type of service
+	aiservice = int()		# AI service / type of service
 pending_sds = C_Sds() # the Sds that will actually be handled
 
-class C_User(object):
-	issi =''
-	call = ''
-	name = ''
-	comment = ''
-	location =''
-	lat = 0.0
-	lon = 0.0
-	state = ''
-	reasonforsending = 1
-	aprs_sym =''
-	aprs_tab = ''
+class User(object):
+	issi =str()
+	call = str()
+	name = str()
+	comment = str()
+	location =str()
+	lat = float()
+	lon = float()
+	state = str()
+	reasonforsending = int()
+	aprs_sym =bytes()
+	aprs_tab = bytes()
 	last_activity = ''
 	sent_last_sds = ''
-userdata = C_User()
+userdata = [{'id':int(), 'data':User()}]
+
 
 class C_DmoRpt(object):
-	issi = 0
-	mni = ''
-	state = 0
+	issi = int()
+	mni = str()
+	state = int()
 	last_activity = 0
 dmo_rpt_gw = C_DmoRpt()
 
@@ -260,6 +280,7 @@ def main():
 			timeout = 1
 		)
 	tetra.pei.isOpen()
+	time.sleep(1)
 
 	# GPIO Events
 	global GPIO
@@ -335,7 +356,7 @@ def Read_Serial():
 		#print('Len(SerialBuffer) = ' + str(len(SerialBuffer))
 
 		RxBytes = tetra.pei.read(tetra.pei.in_waiting) # Read Rx chars.
-		#print('RxBytes = ' + str(RxBytes))
+		print('RxBytes = ' + str(RxBytes))
 		#print('  Len(RxBytes) = ' + str(len(RxBytes)))
 		Buf_Len = len(RxBytes)
 		if (Buf_Len >= 1):
@@ -442,6 +463,8 @@ def initPei():
 
 	if (tetra.peirequest == defs.INIT_0):
 		cmd = ''
+		sendPei(cmd)
+		time.sleep(0.2)
 		cmd = ''
 		sendPei(cmd)
 		time.sleep(0.2)
@@ -715,105 +738,111 @@ def initGroupCall(gc_gssi):
 def handleCallBegin(message):
 	squelchOpen(True) # open the Squelch
 
-	t_ci = C_Callinfo()
+	t_ci = Callinfo()
 
 	message = message.replace('+CTICN: ', '')
 	h = message.split(',')
 
 	# split the message received from the Pei into single parameters
 	# for further use, not all of them are interesting
-	t_ci.instance = h[0]
-	t_ci.callstatus = h[1]
-	t_ci.aistatus = h[2]
-	t_ci.origin_cpit = h[3]
+	t_ci.instance = int(h[0])
+	t_ci.callstatus = int(h[1])
+	t_ci.aistatus = int(h[2])
+	t_ci.origin_cpit = int(h[3])
 	
 	if (settings.debug >= defs.LOGDEBUG2):
-		print('	t_ci.instance = ' + str(t_ci.instance))
-		print('	t_ci.callstatus = ' + str(t_ci.callstatus))
-		print('	t_ci.aistatus = ' + str(t_ci.aistatus))
-		print('	t_ci.origin_cpit = ' + str(t_ci.origin_cpit))
+		print(' t_ci.instance = ' + str(t_ci.instance))
+		print(' t_ci.callstatus = ' + str(t_ci.callstatus))
+		print(' t_ci.aistatus = ' + str(t_ci.aistatus))
+		print(' t_ci.origin_cpit = ' + str(t_ci.origin_cpit))
 
-	o_tsi = h[4]
+	o_tsi = str(h[4])
 	if (len(o_tsi) < 9):
 		if (settings.debug >= defs.LOGDEBUG):
 			print('o_tsi ' + d_tsi)
-		t_ci.o_issi = str(o_tsi)
+		t_ci.o_issi = int(o_tsi)
 		t = tetra.mcc
 		t += tetra.mnc
 		t += getISSI(o_tsi)
-		o_tsi = t
-		t_ci.o_mnc = dmnc
-		t_ci.o_mcc = dmcc
-		if (settings.debug >= defs.LOGDEBUG1):
-			print('	t_ci.o_mcc = ' + str(t_ci.o_mcc))
-			print('	t_ci.o_mnc = ' + str(t_ci.o_mnc))
-			print('	t_ci.o_issi = ' + str(t_ci.o_issi))
+		o_tsi = int(t)
+		t_ci.o_mnc = int(dmnc)
+		t_ci.o_mcc = int(dmcc)
 	else:
 		#splitTsi(o_tsi, t_ci.o_mcc, t_ci.o_mnc, t_ci.o_issi);
 		t_ci.o_mcc = int(o_tsi[0:4])
 		t_ci.o_mnc = int(o_tsi[4:9])
 		t_ci.o_issi = int(o_tsi[9:17])
-		if (settings.debug >= defs.LOGDEBUG1):
-			print('	t_ci.o_mcc = ' + str(t_ci.o_mcc))
-			print('	t_ci.o_mnc = ' + str(t_ci.o_mnc))
-			print('	t_ci.o_issi = ' + str(t_ci.o_issi))
+	if (settings.debug >= defs.LOGDEBUG1):
+		print(' t_ci.o_mcc = ' + str(t_ci.o_mcc))
+		print(' t_ci.o_mnc = ' + str(t_ci.o_mnc))
+		print(' t_ci.o_issi = ' + str(t_ci.o_issi))
 
-	t_ci.hook = h[5]
-	t_ci.simplex = h[6]
-	t_ci.e2eencryption = h[7]
-	t_ci.commstype = h[8]
-	t_ci.codec = h[9]
-	t_ci.dest_cpit = h[10]
+	t_ci.hook = int(h[5])
+	t_ci.simplex = int(h[6])
+	t_ci.e2eencryption = int(h[7])
+	t_ci.commstype = int(h[8])
+	t_ci.codec = int(h[9])
+	t_ci.dest_cpit = int(h[10])
 	if (settings.debug >= defs.LOGDEBUG2):
-		print('	t_ci.hook = ' + str(t_ci.hook))
-		print('	t_ci.simplex = ' + str(t_ci.simplex))
-		print('	t_ci.e2eencryption = ' + str(t_ci.e2eencryption))
-		print('	t_ci.commstype = ' + str(t_ci.commstype))
-		print('	t_ci.codec = ' + str(t_ci.codec))
-		print('	t_ci.dest_cpit = ' + str(t_ci.dest_cpit))
+		print(' t_ci.hook = ' + str(t_ci.hook))
+		print(' t_ci.simplex = ' + str(t_ci.simplex))
+		print(' t_ci.e2eencryption = ' + str(t_ci.e2eencryption))
+		print(' t_ci.commstype = ' + str(t_ci.commstype))
+		print(' t_ci.codec = ' + str(t_ci.codec))
+		print(' t_ci.dest_cpit = ' + str(t_ci.dest_cpit))
 
 	d_tsi = str(h[11])
 	if (len(d_tsi) < 9):
 		print('d_tsi ' + d_tsi)
 		#t_ci.d_issi = atoi(d_tsi.c_str());
+		t_ci.d_issi = int(d_tsi)
 		t = mcc
 		t += mnc
 		t += getISSI(d_tsi)
-		d_tsi = t
-		t_ci.d_mnc = dmnc
-		t_ci.d_mcc = dmcc
-		t_ci.d_mcc = int(d_tsi[0:4])
-		if (settings.debug >= defs.LOGDEBUG1):
-			print('	t_ci.d_mcc = ' + str(t_ci.d_mcc))
-			print('	t_ci.d_mnc = ' + str(t_ci.d_mnc))
-			print('	t_ci.d_issi = ' + str(t_ci.d_issi))
+		d_tsi = int(t)
+		t_ci.d_mnc = int(dmnc)
+		t_ci.d_mcc = int(dmcc)
 	else:
 		#splitTsi(d_tsi, t_ci.d_mcc, t_ci.d_mnc, t_ci.d_issi)
 		t_ci.d_mcc = int(d_tsi[0:4])
 		t_ci.d_mnc = int(d_tsi[4:9])
 		t_ci.d_issi = int(d_tsi[9:17])
-		if (settings.debug >= defs.LOGDEBUG1):
-			print('	t_ci.d_mcc = ' + str(t_ci.d_mcc))
-			print('	t_ci.d_mnc = ' + str(t_ci.d_mnc))
-			print('	t_ci.d_issi = ' + str(t_ci.d_issi))
 
-	t_ci.prio = str(h[12])
+	if (settings.debug >= defs.LOGDEBUG1):
+		print(' t_ci.d_mcc = ' + str(t_ci.d_mcc))
+		print(' t_ci.d_mnc = ' + str(t_ci.d_mnc))
+		print(' t_ci.d_issi = ' + str(t_ci.d_issi))
+
+	t_ci.prio = int(h[12])
 
 	# store call specific data into a Callinfo struct
-#	callinfo[t_ci.instance] = t_ci;
+	#callinfo[t_ci.instance] = t_ci;
+	callinfo[t_ci.instance] = t_ci;
 
 	# check if the user is stored? no -> default
 #	std::map<std::string, User>::iterator iu = userdata.find(o_tsi);
 #	if (iu == userdata.end()):
-#		t_sds = C_Sds()
-#		t_sds.direction = defs.OUTGOING
-#		t_sds.message = infosds
-#		t_sds.tsi = o_tsi
-#		t_sds._type = TEXT
+		#t_sds = C_Sds()
+#		t_sds = [{'direction': defs.OUTGOING}] # Define list with dictionary
+#		t_sds[0]['message'] = infosds # Add item
+#		t_sds[0]['tsi'] = o_tsi
+#		t_sds[0]['type'] = defs.TEXT
 #		firstContact(t_sds)
 #		return
 
-#	userdata[o_tsi].last_activity = time.time();
+	# Search for users in DB
+	found = False
+	for userindex in range(0,len(userdata)):
+		if (userdata[userindex]['id'] == int(t_ci.o_issi)):
+			print('User found ' + str(t_ci.o_issi))
+			found = True
+			break
+	if (not found):
+		print('New User ' + str(t_ci.o_issi))
+		userdata.append({'id':int(t_ci.o_issi)})
+
+	#userdata[o_tsi].last_activity = time.time();
+	userdata[userindex]['last_activity'] = time.time()
 
 	# store info in Qso struct
 	Qso.tsi = o_tsi;
@@ -822,15 +851,15 @@ def handleCallBegin(message):
 	# prepare event for tetra users to be send over the network
 #	Json::Value qsoinfo(Json::objectValue);
 
-#	qsoinfo["qso_active"] = True
+	qsoinfo["qso_active"] = True
 #	qsoinfo["gateway"] = callsign()
-#	qsoinfo["dest_mcc"] = t_ci.d_mcc
-#	qsoinfo["dest_mnc"] = t_ci.d_mnc
-#	qsoinfo["dest_issi"] = t_ci.d_issi
-#	qsoinfo["aimode"] = t_ci.aistatus
-#	qsoinfo["cci"] = t_ci.instance
-#	ti = time.time()
-#	qsoinfo["last_activity"] = ti
+	qsoinfo["dest_mcc"] = t_ci.d_mcc
+	qsoinfo["dest_mnc"] = t_ci.d_mnc
+	qsoinfo["dest_issi"] = t_ci.d_issi
+	qsoinfo["aimode"] = t_ci.aistatus
+	qsoinfo["cci"] = t_ci.instance
+	ti = time.time()
+	qsoinfo["last_activity"] = ti
 
 #	std::list<std::string>::iterator it
 #	it = find(Qso.members.begin(), Qso.members.end(), iu->second.call)
@@ -904,15 +933,29 @@ def handleSdsMsg(sds):
 	t_sds.direction = defs.INCOMING # 1 = received
 	t_sds.tsi = pSDS.fromtsi
 
-#	if (iu == userdata.end()):
-#		firstContact(t_sds)
+	print ('t_sds.tsi = ' + t_sds.tsi)
+
+	# Search for users in DB
+	found = False
+	for userindex in range(0,len(userdata)):
+		if (userdata[userindex]['id'] == int(t_sds.tsi)):
+			print('User found ' + t_sds.tsi)
+			found = True
+			break
+	if (not found):
+		print('New User ' + t_sds.tsi)
+		userdata.append({'id':int(t_sds.tsi)})
+
+	#if (iu == userdata.end()):
+		#firstContact(t_sds)
 
 	# update last activity of sender
-#	userdata[t_sds.tsi].last_activity = time.time()
+	#userdata[t_sds.tsi].last_activity = time.time()
+	userdata[userindex]['last_activity'] = time.time()
 
 	#m_sdstype = defs.handleMessage(sds)
 	#t_sds._type = m_sdstype
-	if (	sds[0 : 2] == '0A' and # LIP_SDS
+	if (	sds.startswith('0A') and # LIP_SDS
 			(ord(sds[2 : 3]) >= 0x30 and ord(sds[2 : 3]) <= 0x39 or
 			ord(sds[2 : 3]) >= 0x41 and ord(sds[2 : 3]) <= 0x46) and
 			(ord(sds[3 : 4]) >= 0x30 and ord(sds[3 : 4]) <= 0x39 or
@@ -994,7 +1037,7 @@ def handleSdsMsg(sds):
 #		sdsinfo["state"] = isds;
 		return
 
-	elif (sds[0 : 1] == '8'): # TEXT_SDS
+	elif (sds.startswith('8')): # TEXT_SDS
 		sds_txt = handleTextSds(sds)
 		cfmTxtSdsReceived(sds, t_sds.tsi)
 		ss = "text_sds_received " + t_sds.tsi + " \"" + sds_txt + "\""
@@ -1004,7 +1047,7 @@ def handleSdsMsg(sds):
 #		sdsinfo["content"] = sds_txt
 		return
 
-	elif (sds[0 : 2] == '02'): # SIMPLE_TEXT_SDS
+	elif (sds.startswith('02')): # SIMPLE_TEXT_SDS
 		sds_txt = handleSimpleTextSds(sds)
 		m_aprsinfo = ">" + sds_txt
 		cfmSdsReceived(t_sds.tsi)
@@ -1012,7 +1055,7 @@ def handleSdsMsg(sds):
 		print(ss)
 		return
 
-	elif (sds[0 : 4] == '8210'): # ACK_SDS
+	elif (sds.startswith('8210')): # ACK_SDS
 		# +CTSDSR: 12,23404,0,23401,0,32
 		# 82100002
 		# sds msg received by MS from remote
@@ -1023,13 +1066,13 @@ def handleSdsMsg(sds):
 		print(ss)
 		return
 		
-	elif (sds[0 : 4] == '8210'): # REGISTER_TSI
-		ss = 'register_tsi ' + t_sds.tsi
-		print(ss)
-		cfmSdsReceived(t_sds.tsi);
-		return
+#	elif (.startswith('')): # REGISTER_TSI
+#		ss = 'register_tsi ' + t_sds.tsi
+#		print(ss)
+#		cfmSdsReceived(t_sds.tsi);
+#		return
 
-	elif (sds[0 : 7] == 'INVALID'):
+	elif (sds.startswith('INVALID')):
 		ss = 'unknown_sds_received'
 		print(ss)
 		if (settings.debug >= defs.LOGWARN):
@@ -1310,8 +1353,8 @@ def sendPei(cmd):
 		arr.append(ord(x))
 	tetra.pei.write(arr)
 #	if (settings.debug >= defs.LOGDEBUG):
-#		print('  To PEI:' + str(cmd))
-#		print('     RAW:' + str(arr))
+	print('  To PEI:' + str(cmd))
+	print('     RAW:' + str(arr))
 	return
 
 ###############################################################################
@@ -1494,6 +1537,19 @@ def pei_Timer(): # PEI keep alive.
 
 ###############################################################################
 # TetraLib.h ################################################################
+###############################################################################
+def decodeSDS(hexSDS):
+
+	print ('hexSDS = ' + hexSDS)
+
+#	for (a in range(0, len(hexSDS), 2)):
+#		ss = std::hex << hexSDS.substr(a,2);
+#		ss += x
+#		sprintf(byte, "%c", x);
+#		sds_text += byte
+#		ss.clear()
+#	return sds_text;
+
 ###############################################################################
 def calcDistance(lat1, lon1, lat2, lon2):
 	dlon = math.pi * (lon2 - lon1) / 180.0
