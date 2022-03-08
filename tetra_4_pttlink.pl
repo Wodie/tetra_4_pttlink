@@ -57,7 +57,7 @@ use constant RevisionInfo => 0;
 my $Version = VersionInfo . '.' . MinorVersionInfo . '-' . RevisionInfo;
 print color('green'), "\n##################################################################\n";
 print "	*** $AppName v$Version ***\n";
-print "	Released: March 06, 2022. Created March 01, 2022.\n";
+print "	Released: March 08, 2022. Created March 01, 2022.\n";
 print "	Created by:\n";
 print "	Juan Carlos Pérez De Castro (Wodie) KM4NNO / XE1F\n";
 print "	www.wodielite.com\n";
