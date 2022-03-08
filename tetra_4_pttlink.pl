@@ -48,6 +48,7 @@ my $MaxLen =1024; # Max Socket Buffer length.
 my $StartTime = time();
 
 
+
 # About this app.
 my $AppName = 'TETRA 4 PTTLink';
 use constant VersionInfo => 1;
@@ -161,11 +162,6 @@ my $current_cci = 0;
 my $dmcc = 0;
 my $dmnc = 0;
 my $infosds = '';
-
-my $AT_NextTimer = 0;
-my $AT_Timeout = 0;
-my $AT_TimerInterval = 4; # Seconds.
-my $AT_TimerEnabled = 0;
 
 struct( Timer => [
 	enabled => '$',
@@ -498,26 +494,48 @@ print "----------------------------------------------------------------------\n"
 
 # Raspberry Pi GPIO
 print color('green'), "Init GPIO\n", color('reset');
-my $PTT_GPIO = $cfg->val('GPIO', 'PTT_GPIO');
-my $SQL_GPIO = $cfg->val('GPIO', 'SQL_GPIO');
-my $AUX_GPIO = $cfg->val('GPIO', 'AUX_GPIO');
-print "	PTT_GPIO = $PTT_GPIO\n";
-print "	SQL_GPIO = $SQL_GPIO\n";
-print "	AUX_GPIO = $AUX_GPIO\n";
+my $PTT_IN_GPIO = $cfg->val('GPIO', 'PTT_IN_GPIO'); # Red
+my $SQL_OUT_GPIO = $cfg->val('GPIO', 'SQL_OUT_GPIO'); # Yellow
+my $AUX_IN_GPIO = $cfg->val('GPIO', 'AUX_IN_GPIO');
+my $PTT_2_OUT_GPIO = $cfg->val('GPIO', 'PTT_2_OUT_GPIO');
+my $SQL_2_IN_GPIO = $cfg->val('GPIO', 'SQL_2_IN_GPIO');
+print "	PTT_IN_GPIO = $PTT_IN_GPIO\n";
+print "	SQL_OUT_GPIO = $SQL_OUT_GPIO\n";
+print "	AUX_IN_GPIO = $AUX_IN_GPIO\n";
+print "	PTT_2OUT_GPIO = $PTT_2_OUT_GPIO\n";
+print "	SQL_2_IN_GPIO = $SQL_2_IN_GPIO\n";
 print "	GPIO_Verbose = $Verbose\n";
 
-my $PTT = RPi::Pin->new($PTT_GPIO, "PTT_GPIO");
-my $SQL = RPi::Pin->new($SQL_GPIO, "SQL_GPIO");
-my $AUX = RPi::Pin->new($AUX_GPIO, "AUX_GPIO");
-# This use the BCM pin numbering scheme. 
+my $PTT_IN_PIN = RPi::Pin->new($PTT_IN_GPIO, "Red");
+my $SQL_OUT_PIN = RPi::Pin->new($SQL_OUT_GPIO, "Yellow");
+my $AUX_IN_PIN = RPi::Pin->new($AUX_IN_GPIO);
+my $PTT_2_OUT_PIN = RPi::Pin->new($PTT_2_OUT_GPIO);
+my $SQL_2_IN_PIN = RPi::Pin->new($SQL_2_IN_GPIO);
+
+# This use the BCM pin numbering scheme.
 # Valid GPIOs are: 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27.
 # GPIO 2, 3 Aleternate for I2C.
 # GPIO 14, 15 alternate for USART.
-$PTT->mode(INPUT);
-$SQL->mode(OUTPUT);
-$AUX->mode(OUTPUT);
-$PTT->write(HIGH);
-$PTT->set_interrupt(EDGE_RISING, 'main::PTT_Interrupt_Handler');
+$PTT_IN_PIN->mode(INPUT); # Red
+$SQL_OUT_PIN->mode(OUTPUT); # Yellow
+$AUX_IN_PIN->mode(OUTPUT);
+$PTT_2_OUT_PIN->mode(OUTPUT);
+$SQL_2_IN_PIN->mode(INPUT);
+
+$SQL_OUT_PIN->write(HIGH); # Yellow
+$PTT_2_OUT_PIN->write(HIGH);
+
+$PTT_IN_PIN->pull(PUD_UP); # Red
+$AUX_IN_PIN->pull(PUD_UP);
+$SQL_2_IN_PIN->pull(PUD_UP);
+
+my $PTT_in_old = 0;
+my $AUX_in_old = 0;
+my $SQL_2_in_old = 0;
+
+#$PTT_IN_PIN->set_interrupt(EDGE_BOTH, 'main::PTT_IN_PIN_Interrupt_Handler'); # Red
+#$AUX_IN_PIN->set_interrupt(EDGE_BOTH, 'main::AUX_IN_PIN_Interrupt_Handler');
+#$SQL_2_IN_PIN->set_interrupt(EDGE_BOTH, 'main::SQL_2_IN_PIN_Interrupt_Handler');
 print "----------------------------------------------------------------------\n";
 
 
@@ -873,11 +891,13 @@ sub Read_Serial { # Read the serial port, look for 0x7E characters and extract d
 		for (my $x = 0; $x <= $NumChars; $x++) {
 			if (ord(substr($SerialBuffer, $x, 1)) == 0x0D) {
 				if (length($AT_Buffer) > 0) {
-					print color('green'), "Serial_Rx\n", color('reset');
-					#print "\tSerial Rx len() = " . length($AT_Buffer) . "\n";
 					TETRA_Rx($AT_Buffer);
-					if ($TETRA_Verbose >= 2) {print "\tRx line = " . $AT_Buffer . "\n";}
-					if ($TETRA_Verbose >= 3) {Bytes_2_HexString($AT_Buffer);}
+					if ($TETRA_Verbose >= 3) {
+						print color('green'), "Serial_Rx\n", color('reset');
+						#print "\tSerial Rx len() = " . length($AT_Buffer) . "\n";
+						print "\tRx line = " . $AT_Buffer . "\n";
+						}
+					if ($TETRA_Verbose >= 4) {Bytes_2_HexString($AT_Buffer);}
 				}
 				#print "\tRead_Serial len = " . length($AT_Buffer) . "\n";
 				$AT_Buffer = ""; # Clear Rx buffer.
@@ -925,23 +945,26 @@ sub squelchOpen {
 	#	return;
 
 	$tetra_modem_sql = $is_open;
-#	setSql($is_open);
+	setSql($is_open);
 	#rx().setSql(is_open);
 	#Logic::squelchOpen(is_open); # GPIO19 = SQL
-#	GPIO.output(settings.SQL_GPIO, not is_open);
 
-	if ($is_open){
-		system("sudo python change_sql.py --sql 0");
-#		system("VAR_SQL = 0");
-		system("/usr/sbin/asterisk -rx \"iax2 show registry\"");
-	} else {
-		system("sudo python change_sql.py --sql 1");
-#		system("VAR_SQL = 1");
-		system("/usr/sbin/asterisk -rx \"iax2 show registry\"");
-	}
 }
 
 
+
+sub TETRA_Rx {
+	my ($Buffer, $Index) = @_;
+	my $OpCode;
+	my $OpArg;
+
+	if ($TETRA_Verbose) { print color('green'), "TETRA_Rx Message.\n", color('reset');}
+	handlePeiAnswer($Buffer);
+
+	if ($TETRA_Verbose) {
+		print "----------------------------------------------------------------------\n";
+	}
+}
 
 ###############################################################################
 # PEI #########################################################################
@@ -1252,7 +1275,14 @@ sub handleCallBegin {
 		$t_ci->o_mnc($dmnc);
 		$t_ci->o_mcc($dmcc);
 	} else {
-		splitTsi($o_tsi, $t_ci->o_mcc, $t_ci->o_mnc, $t_ci->o_issi);
+		my $o_mcc;
+		my $o_mnc;
+		my $o_issi;
+		#splitTsi($o_tsi, $t_ci->o_mcc, $t_ci->o_mnc, $t_ci->o_issi);
+		splitTsi($o_tsi, $o_mcc, $o_mnc, $o_issi);
+		$t_ci->o_mcc($o_mcc);
+		$t_ci->o_mnc($o_mnc);
+		$t_ci->o_issi($o_issi);
 	}
 
 	$t_ci->hook(getNextVal($h));
@@ -1261,8 +1291,6 @@ sub handleCallBegin {
 	$t_ci->commstype(getNextVal($h));
 	$t_ci->codec(getNextVal($h));
 	$t_ci->dest_cpit(getNextVal($h));
-
-print "HHHH $h\n";
 
 	my $d_tsi = getNextStr($h);
 
@@ -1275,7 +1303,14 @@ print "HHHH $h\n";
 		$t_ci->d_mnc($dmnc);
 		$t_ci->d_mcc($dmcc);
 	} else {
-		splitTsi($d_tsi, $t_ci->d_mcc, $t_ci->d_mnc, $t_ci->d_issi);
+		my $d_mcc;
+		my $d_mnc;
+		my $d_issi;
+		#splitTsi($d_tsi, $t_ci->d_mcc, $t_ci->d_mnc, $t_ci->d_issi);
+		splitTsi($d_tsi, $d_mcc, $d_mnc, $d_issi);
+		$t_ci->d_mcc($d_mcc);
+		$t_ci->d_mnc($d_mnc);
+		$t_ci->d_issi($d_issi);
 	}
 
 	$t_ci->prio(int($h));
@@ -1790,12 +1825,6 @@ sub sendWelcomeSds {
 }
 
 ####################################################
-sub splitTsi {
-	my ($tsi, $mcc, $mnc, $issi) = @_;
-
-}
-
-####################################################
 # @param: a message, e.g. +CTCC: 1,1,1,0,0,1,1
 # * @return: the current caller identifier
 sub handleCci {
@@ -1804,22 +1833,6 @@ sub handleCci {
 }
 
 
-
-sub TETRA_Rx {
-	my ($Buffer, $Index) = @_;
-	my $OpCode;
-	my $OpArg;
-
-	if ($TETRA_Verbose >= 1) { print color('green'), "TETRA_Rx Message.\n", color('reset');}
-	if ($TETRA_Verbose >= 2) {print " " . $Buffer . "\n";}
-	if ($TETRA_Verbose >= 3) {Bytes_2_HexString($Buffer);}
-
-	handlePeiAnswer($Buffer);
-
-	if ($TETRA_Verbose) {
-		print "----------------------------------------------------------------------\n";
-	}
-}
 
 
 
@@ -2138,20 +2151,60 @@ sub splitTsi {
 			$ret = 0;
 		}
 	}
-
-	$_[1] = $mcc;
+	$_[1] = int($mcc);
 	$_[2] = $mnc;
 	$_[3] = $issi;
 	return $ret;
 }
 
+
+
 ####################################################
 sub setSql {
 	my ($is_open) = @_;
 
+	$SQL_OUT_PIN->write(!$is_open);
+	#GPIO.output($SQL_OUT_PIN, not is_open);
+
+	if ($is_open){
+		# Activity
+		$ENV{'VAR_SQL'} = 61;
+		system("sudo python change_sql.py --sql 1");
+		
+	} else {
+		# No ctivity
+		$ENV{'VAR_SQL'} = 60;
+		system("sudo python change_sql.py --sql 0");
+
+	}
+#	system("VAR_SQL = 0");
+#	system("/usr/sbin/asterisk -rx \"iax2 show registry\"");
+
+	my $userName =  $ENV{'LOGNAME'}; 
+	print "Running as: $userName\n"; 
+
+	my $var =  $ENV{'VAR_SQL'}; 
+	print "VAR_SQL = $var\n"; 
 }
 
+####################################################
+sub PTT_IN_PIN_Interrupt_Handler {
+#	print color('yellow'), "PTT_IN_PIN Interrupt  Handler.\n", color('reset');
+	print "PTT_IN_PIN (Red cable) Interrupt  Handler.\n";
+	transmitterStateChange($PTT_IN_PIN->read());
+	return;
+}
 
+####################################################
+sub AUX_IN_PIN_Interrupt_Handler {
+#	print color('yellow'), "AUX_IN_PIN Interrupt  Handler.\n", color('reset');
+
+}
+
+####################################################
+sub SQL_2_IN_PIN_Interrupt_Handler {
+#	print color('yellow'), "SQL_2_IN_PIN Interrupt  Handler.\n", color('reset');
+}
 
 
 
@@ -2762,10 +2815,6 @@ sub Bytes_2_HexString {
 	print "\n";
 }
 
-sub PTT_Interrupt_Handler {
-	print color('yellow'), "PTT Interrupt Handler.\n", color('reset');
-}
-
 sub HotKeys {
 	# Hot Keys.
 	if ($HotKeys) {
@@ -2789,6 +2838,9 @@ sub HotKeys {
 				case ord('C') { # 'C'
 				}
 				case ord('c') { # 'c'
+					foreach (sort keys %ENV) { 
+						print "$_  =  $ENV{$_}\n"; 
+					}
 				}
 				case ord('E') {
 				}
@@ -2863,6 +2915,39 @@ sub HotKeys {
 	}
 }
 
+sub getEnvVars {
+#	my $var = $ENV{'VAR_PTT'};
+#	print "VAR_PTT = $var\n";
+
+#	my $var = $ENV{'VAR_SQL'};
+#	print "VAR_SQL = $var\n";
+
+}
+
+sub GPIOs {
+	my $PTT_in = $PTT_IN_PIN->read();
+	my $AUX_in = $AUX_IN_PIN->read();
+	my $SQL_2_in = $SQL_2_IN_PIN->read();
+
+	if ($PTT_in != $PTT_in_old) {
+		$PTT_in_old = $PTT_in;
+		print color('green'), "PTT_IN_PIN changed to $PTT_in\n", color('reset');
+		transmitterStateChange(!$PTT_in);
+	}
+
+	if ($AUX_in != $AUX_in_old) {
+		$AUX_in_old = $AUX_in;
+		print color('green'), "AUX_IN_PIN changed to $AUX_IN_PIN\n", color('reset');
+
+	}
+
+	if ($SQL_2_in != $SQL_2_in_old) {
+		$SQL_2_in_old = $SQL_2_in;
+		print color('green'), "SQL_2_IN_PIN changed to $SQL_2_IN_PIN\n", color('reset');
+
+	}
+}
+
 
 
 #################################################################################
@@ -2879,6 +2964,9 @@ sub MainLoop {
 		peiComTimer();
 		peiActivityTimer();
 		peiBreakCommandTimer();
+
+#		getEnvVars();
+		GPIOs();
 
 		nanosleep(010000000); # 2 ms
 
